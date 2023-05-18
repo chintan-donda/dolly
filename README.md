@@ -131,6 +131,84 @@ To run on V100 instances with 32GB of GPU memory (ex: `p3dn.24xlarge` or `Standa
   
 You may be able to slightly increase the batch size with 32GB instances, compared to what works above for 24GB A10s.
 
+
+### Training on On-Prem GPUs
+
+To train the model on On-Prem GPUs like V100 with 32GB of GPU memory (ex: `Tesla V100-SXM2-32GB`), follow instruction below:
+- Make sure you've `python3.8` or higher version.
+- `git clone git@github.com:databrickslabs/dolly.git`
+- Create Virtual env
+  - If not installed: `python3.8 -m pip install virtualenv`
+  - `python3.8 -m virtualenv venv_dolly`
+  - `source venv_dolly/bin/activate`
+- Install these additional NVIDIA libraries for Databricks Runtime 13.0 ML. Install these first and then only install the requirements.txt
+  ```
+  wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/libcusparse-dev-11-7_11.7.3.50-1_amd64.deb -O /tmp/libcusparse-dev-11-7_11.7.3.50-1_amd64.deb
+  wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/libcublas-dev-11-7_11.10.1.25-1_amd64.deb -O /tmp/libcublas-dev-11-7_11.10.1.25-1_amd64.deb
+  wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/libcusolver-dev-11-7_11.4.0.1-1_amd64.deb -O /tmp/libcusolver-dev-11-7_11.4.0.1-1_amd64.deb
+  wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/libcurand-dev-11-7_10.2.10.91-1_amd64.deb -O /tmp/libcurand-dev-11-7_10.2.10.91-1_amd64.deb
+  dpkg -i /tmp/libcusparse-dev-11-7_11.7.3.50-1_amd64.deb
+  dpkg -i /tmp/libcublas-dev-11-7_11.10.1.25-1_amd64.deb
+  dpkg -i /tmp/libcusolver-dev-11-7_11.4.0.1-1_amd64.deb
+  dpkg -i /tmp/libcurand-dev-11-7_10.2.10.91-1_amd64.deb
+  ```
+- Install requirements: `python3.8 -m pip install -r requirements_dev.txt`
+- Make sure that `nvcc -V` and `nvidia-smi` CUDA version are same or at least with same major version.
+  - Like `nvcc -V == 11.3` and `nvidia-smi == 11.7` ⇒ this works as the major version `11.x` are same
+  - If not, upgrade/downgrade the CUDA versions to make it compatible with each other
+    - `pip install torch==2.0.0+cu117 torchaudio==2.0.2+cu117 torchvision==0.15.2+cu117`
+    - `pip install pytorch-cuda==11.7`
+- If there is OOM (Out-Of-Memory) issue during the training, we can try training in the low bit mode as below:
+  - Change the below lines `training/trainer.py`
+    ```
+    model = AutoModelForCausalLM.from_pretrained(
+        pretrained_model_name_or_path, trust_remote_code=True, use_cache=False if gradient_checkpointing else True,
+        load_in_8bit=True, device_map='auto'
+        offload_folder='./offload', offload_state_dict=True,
+    )
+    ```
+  - You need to install: `pip install bitsandbytes`
+
+
+### Common issues and their fixes when training on On-Prem GPUs
+
+- If error like: `Exception: >- DeepSpeed Op Builder: Installed CUDA version 9.1 does not match the version torch was compiled with 11.8, unable to compile cuda/cpp extensions without a matching cuda version`,
+    - Add in `~/.bashrc`
+        ```
+        export CUDA_HOME="/usr/local/cuda-11.3”
+        export LD_LIBRARY_PATH="/usr/local/cuda-11.3/lib64:$LD_LIBRARY_PATH"
+        export PATH="/usr/local/cuda-11.3/bin:$PATH"
+        ```
+      - NOTE: Replace `11.3` with your installed CUDA version. `nvcc -V` and `nvidia-smi` major versions should match. Ex: `11.x` works fine. But the one having `11.x` and the other having `10.x` doesn't work.
+- If error like: `ValueError: Tokenizer class GPTNeoXTokenizer does not exist or is not currently imported`
+    ```
+    python3.8 -m pip install sentencepiece
+    python3.8 -m pip install git+https://github.com/huggingface/transformers
+    python3.8 -m pip install git+https://github.com/zphang/transformers.git@neox20b
+    python3.8 -m pip install huggingface-hub
+    ```
+- If `ModuleNotFound error: tensorboardX not found`:
+    ```
+    python3.8 -m pip install tensorboardX
+    pip install tensorboard==1.15.0
+    ```
+- If error: **`cannot import name '_psutil_linux' from partially initialized module 'psutil' (most likely due to a circular import) (/usr/lib/python3/dist-packages/psutil/__init__.py)`**
+    - `python3.8 -m pip install -U psutil`
+
+
+## Generate some sentences using the newly trained model
+
+Generate the sentences using the newly trained model as below:
+```
+model_path = '/path/to/checkpoint'
+from training.generate import load_model_tokenizer_for_generate, generate_response
+model, tokenizer = load_model_tokenizer_for_generate(model_path)
+instruction='Write a tweet to introduce Dolly, a model to mimic ChatGPT.'
+response = generate_response(instruction, model, tokenizer)
+print(response)
+```
+
+
 ## Running Unit Tests Locally
 
 ```
