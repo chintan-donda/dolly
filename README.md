@@ -134,13 +134,15 @@ You may be able to slightly increase the batch size with 32GB instances, compare
 
 ### Training on On-Prem GPUs
 
-To train the model on On-Prem GPUs like V100 with 32GB of GPU memory (ex: `Tesla V100-SXM2-32GB`), follow instruction below:
+To train the model on On-Prem GPUs like V100 with 32GB of GPU memory (ex: `Tesla V100-SXM2-32GB`), follow the below instructions:
 - Make sure you've `python3.8` or higher version.
-- `git clone git@github.com:databrickslabs/dolly.git`
+- `git clone git@github.com:chintan-donda/dolly.git`
 - Create Virtual env
   - If not installed: `python3.8 -m pip install virtualenv`
-  - `python3.8 -m virtualenv venv_dolly`
-  - `source venv_dolly/bin/activate`
+  ```
+  python3.8 -m virtualenv venv_dolly
+  source venv_dolly/bin/activate
+  ```
 - Install these additional NVIDIA libraries for Databricks Runtime 13.0 ML. Install these first and then only install the requirements.txt
   ```
   wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/libcusparse-dev-11-7_11.7.3.50-1_amd64.deb -O /tmp/libcusparse-dev-11-7_11.7.3.50-1_amd64.deb
@@ -156,8 +158,10 @@ To train the model on On-Prem GPUs like V100 with 32GB of GPU memory (ex: `Tesla
 - Make sure that `nvcc -V` and `nvidia-smi` CUDA version are same or at least with same major version.
   - Like `nvcc -V == 11.3` and `nvidia-smi == 11.7` ⇒ this works as the major version `11.x` are same
   - If not, upgrade/downgrade the CUDA versions to make it compatible with each other
-    - `pip install torch==2.0.0+cu117 torchaudio==2.0.2+cu117 torchvision==0.15.2+cu117`
-    - `pip install pytorch-cuda==11.7`
+    ```
+    pip install torch==2.0.0+cu117 torchaudio==2.0.2+cu117 torchvision==0.15.2+cu117
+    pip install pytorch-cuda==11.7
+    ```
 - If there is OOM (Out-Of-Memory) issue during the training, we can try training in the low bit mode as below:
   - Change the below lines `training/trainer.py`
     ```
@@ -168,6 +172,16 @@ To train the model on On-Prem GPUs like V100 with 32GB of GPU memory (ex: `Tesla
     )
     ```
   - You need to install: `pip install bitsandbytes`
+
+Once the installation is done, train the model as below:
+```
+chmod +x train.sh
+./train.sh
+```
+
+- train.sh has some hard-coded values. Change it based on the requirements. Ex: It uses `EleutherAI/pythia-2.8b` as the default base model. You can change it to any one from the [supported models](https://github.com/chintan-donda/dolly/blob/master/training/consts.py#L2).
+- By default, it starts training on all the available GPUs using the argument `--num_gpus=8` in the `deepspeed` command. To force it using only a couple of them, remove `--num_gpus=8` and export the `CUDA_VISIBLE_DEVICES` as below:
+  - `export CUDA_VISIBLE_DEVICES="1,2,3"` It's the GPU index that would be used. To check for the free GPU index: `gpustat` or `nvidia-smi`. And pick the index of your choice and pass it here. Below values "1,2,3" means the training would be done on 3 GPUs (1st, 2nd, and 3rd index GPUs).
 
 
 ### Common issues and their fixes when training on On-Prem GPUs
@@ -187,16 +201,16 @@ To train the model on On-Prem GPUs like V100 with 32GB of GPU memory (ex: `Tesla
     python3.8 -m pip install git+https://github.com/zphang/transformers.git@neox20b
     python3.8 -m pip install huggingface-hub
     ```
-- If `ModuleNotFound error: tensorboardX not found`:
+- If error like: `ModuleNotFound error: tensorboardX not found`:
     ```
     python3.8 -m pip install tensorboardX
     pip install tensorboard==1.15.0
     ```
-- If error: **`cannot import name '_psutil_linux' from partially initialized module 'psutil' (most likely due to a circular import) (/usr/lib/python3/dist-packages/psutil/__init__.py)`**
+- If error like: **`cannot import name '_psutil_linux' from partially initialized module 'psutil' (most likely due to a circular import) (/usr/lib/python3/dist-packages/psutil/__init__.py)`**
     - `python3.8 -m pip install -U psutil`
 
 
-## Generate some sentences using the newly trained model
+## Generate sentences using the newly trained model
 
 Generate the sentences using the newly trained model as below:
 ```
