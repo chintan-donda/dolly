@@ -88,6 +88,10 @@ def preprocess_batch(batch: Dict[str, List], tokenizer: AutoTokenizer, max_lengt
 def load_training_dataset(path_or_dataset: str = DEFAULT_TRAINING_DATASET) -> Dataset:
     logger.info(f"Loading dataset from {path_or_dataset}")
     dataset = load_dataset(path_or_dataset)["train"]
+    # Select only 20% data for training
+    # dataset = dataset.train_test_split(train_size=0.2, shuffle=True)["train"]
+    # Select first 100 rows
+    # dataset = dataset.select(range(100))
     logger.info("Found %d rows", dataset.num_rows)
 
     def _add_text(rec):
@@ -130,7 +134,9 @@ def load_model(
 ) -> AutoModelForCausalLM:
     logger.info(f"Loading model for {pretrained_model_name_or_path}")
     model = AutoModelForCausalLM.from_pretrained(
-        pretrained_model_name_or_path, trust_remote_code=True, use_cache=False if gradient_checkpointing else True
+        pretrained_model_name_or_path, trust_remote_code=True, use_cache=False if gradient_checkpointing else True,
+        # load_in_8bit=True, device_map='auto'
+        offload_folder='./offload', offload_state_dict=True,
     )
     return model
 
@@ -239,8 +245,8 @@ def train(
         output_dir=local_output_dir,
         per_device_train_batch_size=per_device_train_batch_size,
         per_device_eval_batch_size=per_device_eval_batch_size,
-        fp16=False,
-        bf16=bf16,
+        fp16=True,
+        bf16=False,
         learning_rate=lr,
         num_train_epochs=epochs,
         deepspeed=deepspeed,
