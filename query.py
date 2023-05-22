@@ -1,16 +1,9 @@
+import os
+os.system("export CUDA_VISIBLE_DEVICES=\"2,3,5\"")
+
 from training.generate import InstructionTextGenerationPipeline, load_model_tokenizer_for_generate
 from langchain import PromptTemplate, LLMChain
 from langchain.llms import HuggingFacePipeline
-
-# Load model and tokenizer
-input_model = "databricks/dolly-v2-3b"
-input_model = './dolly_2023-05-19_13-19-23'
-
-# Open QA
-instructions = [
-    "Explain to me the difference between nuclear fission and fusion.",
-    "Give me a list of 5 science fiction books I should read next.",
-]
 
 # Closed QA
 context = (
@@ -52,60 +45,29 @@ context = (
 
 question = "What are the DO’S AND DON’TS IN IPM?"
 
-import pdb; pdb.set_trace()
+from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+import torch
 
-def huggingface_pipeline(input_model):
-    model, tokenizer = load_model_tokenizer_for_generate(input_model)
-    import pdb; pdb.set_trace()
-
-    # template for an instrution with no input
-    prompt = PromptTemplate(
-        input_variables=["instruction"],
-        template="{instruction}")
-
-    # template for an instruction with input
-    prompt_with_context = PromptTemplate(
-        input_variables=["instruction", "context"],
-        template="{instruction}\n\nInput:\n{context}")
-
-    # task can be any of the listed here: https://huggingface.co/docs/transformers/main_classes/pipelines#transformers.pipeline.task
-    hf_pipeline = HuggingFacePipeline(
-        pipeline=InstructionTextGenerationPipeline(
-            # Return the full text, because this is what the HuggingFacePipeline expects.
-            model=model, tokenizer=tokenizer, return_full_text=True, task="text-generation"))
-
-    llm_chain = LLMChain(llm=hf_pipeline, prompt=prompt)
-    llm_context_chain = LLMChain(llm=hf_pipeline, prompt=prompt_with_context)
-
-    # Use the model to generate responses for each of the instructions above.
-    for instruction in instructions:
-        response = llm_chain.predict(instruction=instruction)
-        print(f"Instruction: {instruction}\n\n{response}\n\n-----------\n")
-
-    response = llm_context_chain.predict(instruction=question, context=context)
-    print(f"Instruction: {question}\n\nContext:\n{context}\n\nResponse:\n{response}\n\n-----------\n")
-
-huggingface_pipeline(input_model)
-
-
-
-# ================== Custom LLM Wrapper ==================
-from custom_llm import CustomLLM
-from llama_index import LLMPredictor
-
-customLLMObj = CustomLLM(input_model)
-# customLLMObj.model_name_or_path = input_model
-llm = LLMPredictor(
-    llm=CustomLLM(input_model),
-    load_in_8bit=True,
-    device_map='auto'
-)
+# Load model and tokenizer
+# input_model = "databricks/dolly-v2-3b"
+input_model = './dolly_2023-05-19_13-19-23'
 
 model, tokenizer = load_model_tokenizer_for_generate(input_model)
+
 llm = HuggingFacePipeline(
     pipeline=InstructionTextGenerationPipeline(
         # Return the full text, because this is what the HuggingFacePipeline expects.
-        model=model, tokenizer=tokenizer, return_full_text=True, task="text-generation"))
+        model=model,
+        tokenizer=tokenizer,
+        return_full_text=True,
+        task="text-generation",
+        torch_dtype=torch.bfloat16,
+        # device_map="auto",
+        max_new_tokens=256,
+        top_p=0.95,
+        top_k=50
+    )
+)
 
 prompt_template = """You are a helpful AI assistant. Use the following pieces of context to answer the question comprehensively at the end. Start the answer by giving short summary and write the answer starting with Here are some of the key points:. Write each sentence separately with numbering. If you don't know the answer, just say that you don't know, don't try to make up an answer. If the question is not related to the context, politely respond that you are tuned to only answer questions that are related to the context.
 
@@ -128,8 +90,9 @@ text_splitter = CharacterTextSplitter(
 texts = text_splitter.split_text(context)
 
 # pip install sentence_transformers
-embeddings = SentenceTransformerEmbeddings()
+# embeddings = SentenceTransformerEmbeddings()
 # embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
 
 # pip install faiss-cpu==1.7.3
 # Find similar docs that are relevant to the question
@@ -141,10 +104,12 @@ docsearch = FAISS.from_texts(
 # Search for the similar docs
 docs = docsearch.similarity_search(question, k=2)
 
+import pdb; pdb.set_trace()
+
 from langchain.prompts import PromptTemplate
 from langchain.chains.question_answering import load_qa_chain
 PROMPT = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
-chain = load_qa_chain(llm, chain_type='stuff', prompt=PROMPT)
-out_dict = chain({"input_documents": docs, "question": question}, return_only_outputs=True)
+qa_chain = load_qa_chain(llm=llm, chain_type='stuff', prompt=PROMPT)
+out_dict = qa_chain({"input_documents": docs, "question": question}, return_only_outputs=True)
 print(out_dict['output_text'])
 # ========================================================================
