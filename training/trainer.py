@@ -85,13 +85,12 @@ def preprocess_batch(batch: Dict[str, List], tokenizer: AutoTokenizer, max_lengt
     )
 
 
-def load_training_dataset(path_or_dataset: str = DEFAULT_TRAINING_DATASET) -> Dataset:
+def load_training_dataset(path_or_dataset: str = DEFAULT_TRAINING_DATASET, data_files: str = '') -> Dataset:
     logger.info(f"Loading dataset from {path_or_dataset}")
-    dataset = load_dataset(path_or_dataset)["train"]
-    # Select only 20% data for training
-    # dataset = dataset.train_test_split(train_size=0.2, shuffle=True)["train"]
-    # Select first 100 rows
-    # dataset = dataset.select(range(100))
+    data_files = {"train": "processed_*.jsonl"}
+    dataset = load_dataset(path_or_dataset, data_files=data_files)["train"]
+    # Select first 1000 rows
+    # dataset = dataset.select(range(1000))
     logger.info("Found %d rows", dataset.num_rows)
 
     def _add_text(rec):
@@ -151,7 +150,7 @@ def get_model_tokenizer(
     return model, tokenizer
 
 
-def preprocess_dataset(tokenizer: AutoTokenizer, max_length: int, seed=DEFAULT_SEED, training_dataset: str = DEFAULT_TRAINING_DATASET) -> Dataset:
+def preprocess_dataset(tokenizer: AutoTokenizer, max_length: int, seed=DEFAULT_SEED, training_dataset: str = DEFAULT_TRAINING_DATASET, data_files: str = '') -> Dataset:
     """Loads the training dataset and tokenizes it so it is ready for training.
 
     Args:
@@ -162,7 +161,7 @@ def preprocess_dataset(tokenizer: AutoTokenizer, max_length: int, seed=DEFAULT_S
         Dataset: HuggingFace dataset
     """
 
-    dataset = load_training_dataset(training_dataset)
+    dataset = load_training_dataset(training_dataset, data_files)
 
     logger.info("Preprocessing dataset")
     _preprocessing_function = partial(preprocess_batch, max_length=max_length, tokenizer=tokenizer)
@@ -205,6 +204,7 @@ def train(
     test_size: Union[float, int],
     save_total_limit: int,
     warmup_steps: int,
+    data_files: str,
     training_dataset: str = DEFAULT_TRAINING_DATASET,
 ):
     set_seed(seed)
@@ -227,7 +227,7 @@ def train(
         max_length = 1024
         logger.info(f"Using default max length: {max_length}")
 
-    processed_dataset = preprocess_dataset(tokenizer=tokenizer, max_length=max_length, seed=seed, training_dataset=training_dataset)
+    processed_dataset = preprocess_dataset(tokenizer=tokenizer, max_length=max_length, seed=seed, training_dataset=training_dataset, data_files=data_files)
 
     split_dataset = processed_dataset.train_test_split(test_size=test_size, seed=seed)
 
@@ -245,8 +245,8 @@ def train(
         output_dir=local_output_dir,
         per_device_train_batch_size=per_device_train_batch_size,
         per_device_eval_batch_size=per_device_eval_batch_size,
-        fp16=True,
-        bf16=False,
+        fp16=(not bf16),
+        bf16=bf16,
         learning_rate=lr,
         num_train_epochs=epochs,
         deepspeed=deepspeed,
@@ -310,6 +310,7 @@ def train(
 @click.option("--seed", type=int, default=DEFAULT_SEED, help="Seed to use for training.")
 @click.option("--deepspeed", type=str, default=None, help="Path to deepspeed config file.")
 @click.option("--training-dataset", type=str, default=DEFAULT_TRAINING_DATASET, help="Path to dataset for training")
+@click.option("--data-files", type=str, help="Data files that contains the dataset for training. These files should be present under training-dataset directory. Can be given with pattern matching style as *. More examples can be found at: https://huggingface.co/docs/datasets/loading")
 @click.option(
     "--gradient-checkpointing/--no-gradient-checkpointing",
     is_flag=True,
@@ -323,8 +324,6 @@ def train(
     help="Provided by deepspeed to identify which instance this process is when performing multi-GPU training.",
 )
 @click.option("--bf16", type=bool, default=True, help="Whether to use bf16 (preferred on A100's).")
-
-
 def main(**kwargs):
     train(**kwargs)
 

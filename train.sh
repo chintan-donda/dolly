@@ -4,6 +4,8 @@ export input_model='EleutherAI/pythia-2.8b'
 export checkpoint_dir_name="${model_name}_${timestamp}"
 export deepspeed_config=`pwd`/config/ds_z3_bf16_config.json
 export local_output_dir="./${checkpoint_dir_name}"
+export training_dataset=`pwd`/data
+export data_files='processed_*.jsonl'
 
 # By default, it starts training on all the available GPUs using the argument `--num_gpus=8` in the `deepspeed` command. To force it using only a couple of them, remove `--num_gpus=8` and export the `CUDA_VISIBLE_DEVICES` as below:
     # `export CUDA_VISIBLE_DEVICES="1,2,3"` It's the GPU index that would be used. To check for the free GPU index: `gpustat` or `nvidia-smi`. And pick the index of your choice and pass it here. Below values "1,2,3" means the training would be done on 3 GPUs (1st, 2nd, and 3rd index GPUs).
@@ -17,6 +19,8 @@ deepspeed \
     --num_gpus=8 \
     --module training.trainer \
     --deepspeed $deepspeed_config \
+    --training-dataset $training_dataset \
+    --data-files $data_files \
     --epochs 1 \
     --local-output-dir $local_output_dir \
     --dbfs-output-dir "" \
@@ -26,4 +30,4 @@ deepspeed \
     --warmup-steps 50 \
     --input-model $input_model \
     --logging-steps 1000 \
-    --test-size 1000
+    --test-size 100
